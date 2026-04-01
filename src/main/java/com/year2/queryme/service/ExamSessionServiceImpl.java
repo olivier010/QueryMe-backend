@@ -99,4 +99,5 @@ public class ExamSessionServiceImpl implements ExamSessionService {
                 .orElseThrow(() -> new RuntimeException("Session not found: " + sessionId));
     }
 }
-```
+
+
