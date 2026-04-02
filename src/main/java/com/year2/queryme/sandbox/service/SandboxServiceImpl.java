@@ -3,6 +3,9 @@ package com.year2.queryme.sandbox.service;
 import com.year2.queryme.sandbox.dto.SandboxConnectionInfo;
 import com.year2.queryme.sandbox.model.SandboxRegistry;
 import com.year2.queryme.sandbox.repository.SandboxRegistryRepo;
+import com.year2.queryme.sandbox.exception.SandboxExpiredException;
+import com.year2.queryme.sandbox.exception.SandboxNotFoundException;
+import com.year2.queryme.sandbox.exception.SandboxProvisioningException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -65,7 +68,7 @@ public class SandboxServiceImpl implements SandboxService {
             log.error("Failed to provision sandbox: {}", schemaName, e);
             jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + schemaName + " CASCADE");
             jdbcTemplate.execute("DROP USER IF EXISTS " + dbUser);
-            throw new RuntimeException("Sandbox provisioning failed", e);
+            throw new SandboxProvisioningException("Sandbox provisioning failed", e);
         }
     }
 
@@ -73,7 +76,7 @@ public class SandboxServiceImpl implements SandboxService {
     @Transactional
     public void teardownSandbox(UUID examId, UUID studentId) {
         SandboxRegistry registry = registryRepo.findByExamIdAndStudentId(examId, studentId)
-                .orElseThrow(() -> new IllegalArgumentException("Sandbox not found for given Exam and Student"));
+                .orElseThrow(() -> new SandboxNotFoundException("Sandbox not found for given Exam and Student"));
 
         log.info("Tearing down sandbox schema: {}", registry.getSchemaName());
 
@@ -87,10 +90,10 @@ public class SandboxServiceImpl implements SandboxService {
     @Override
     public SandboxConnectionInfo getSandboxConnectionDetails(UUID examId, UUID studentId) {
         SandboxRegistry registry = registryRepo.findByExamIdAndStudentId(examId, studentId)
-                .orElseThrow(() -> new IllegalArgumentException("Sandbox not found"));
+                .orElseThrow(() -> new SandboxNotFoundException("Sandbox not found"));
 
         if (!"ACTIVE".equals(registry.getStatus())) {
-            throw new IllegalStateException("Sandbox is not active.");
+            throw new SandboxExpiredException("Sandbox is not active.");
         }
 
         return new SandboxConnectionInfo(registry.getSchemaName(), registry.getDbUser());
