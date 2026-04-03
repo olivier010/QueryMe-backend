@@ -8,4 +8,5 @@ import java.util.UUID;
 public interface ResultRepository extends JpaRepository<Result, UUID> {
     List<Result> findBySessionId(UUID sessionId);
     List<Result> findByQuestionId(UUID questionId);
+    List<Result> findAllByExamId(UUID examId);
 }

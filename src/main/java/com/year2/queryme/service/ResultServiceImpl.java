@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
-public class ResultServiceImpl extends ResultService {
+public class ResultServiceImpl implements ResultService {
 
     @Autowired
     private ResultRepository resultRepository;
