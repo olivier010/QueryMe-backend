@@ -1,10 +1,7 @@
 package com.year2.queryme.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
-
+import lombok.*;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -13,33 +10,28 @@ import java.util.UUID;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class ExamSession {
-    
+
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
-    
-    @Column(nullable = false)
-    private UUID examId;
-    
-    @Column(nullable = false)
-    private UUID studentId;
-    
+
+    @Column(name = "exam_id", nullable = false)
+    private String examId;
+
+    @Column(name = "student_id", nullable = false)
+    private String studentId;
+
     @Column(name = "started_at")
     private LocalDateTime startedAt;
-    
+
     @Column(name = "submitted_at")
     private LocalDateTime submittedAt;
-    
+
     @Column(name = "expires_at")
     private LocalDateTime expiresAt;
-    
-    @Column(name = "sandbox_schema")
+
+    @Column(name = "sandbox_schema", length = 100)
     private String sandboxSchema;
-    
-    @PrePersist
-    public void prePersist() {
-        if (id == null) {
-            id = UUID.randomUUID().toString();
-        }
-    }
 }
