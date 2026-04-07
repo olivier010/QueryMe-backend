@@ -45,8 +45,9 @@ public class AuthIntegrationTest {
         // 1. Signup
         SignupRequest signupRequest = new SignupRequest();
         signupRequest.setEmail("test@example.com");
+        signupRequest.setName("Test User");
         signupRequest.setPassword("password123");
-        signupRequest.setRoles(Collections.singleton("student"));
+        signupRequest.setRole(com.year2.queryme.model.enums.UserTypes.STUDENT);
 
         mockMvc.perform(post("/api/auth/signup")
                 .contentType(MediaType.APPLICATION_JSON)
