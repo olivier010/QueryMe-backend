@@ -9,7 +9,7 @@ import java.util.UUID;
 @Data
 public class Result {
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     @Column(name = "submission_id", nullable = false)

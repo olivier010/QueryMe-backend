@@ -9,7 +9,9 @@
 - [Project Setup](#project-setup)
 - [Group J — Auth Module](#group-j--auth-module)
 - [Group A — Exam Module](#group-a--exam-module)
+- [Group I — Question Module](#group-i--question-module)
 - [Group D — Sandbox Environment Module](#group-d--sandbox-environment-module)
+- [Group G — Query Engine Module](#group-g--query-engine-module)
 
 ---
 
@@ -698,3 +700,178 @@ Authorization failure example:
 ```
 
 *For questions about the Auth module contact `groupj.queryme@gmail.com`*
+
+---
+
+# Group G — Query Engine Module
+
+**Overview:** The Query Engine is the core of the QueryMe platform. It is responsible for receiving student SQL queries, validating them for security, executing them in a timed sandbox, and grading the results against an answer key.
+
+## Technical Tasks
+
+- **Query Validation**: Regex-based blocklist filtering to prevent destructive SQL operations.
+- **Sandboxed Execution**: Hard-timeout (10s) query execution with restricted schema access.
+- **Result-Set Comparison**: Order-insensitive and type-normalized comparison of student output against teacher reference keys.
+- **Scoring**: Full marks for exact data matches, and optional **Partial Marks** (50%) for row-count matches.
+
+## Endpoints
+
+### Submit a Query
+```
+POST /api/query/submit
+Authorization: Bearer <token>
+```
+
+**Request Body:**
+```json
+{
+  "examId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "questionId": "e8aaee82-f787-4fab-93fa-6fbc1a1e8530",
+  "studentId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "query": "SELECT * FROM students"
+}
+```
+
+**Response `200 OK`:**
+```json
+{
+  "submissionId": "...",
+  "isCorrect": true,
+  "score": 10,
+  "executionError": null
+}
+```
+
+---
+
+## Testing Your Implementation (Group G)
+
+Follow these steps in Postman to verify your module is "Demo-Ready":
+
+### 1. Test Security (Blocklist)
+Submit a query like `DROP TABLE students;`.
+- **Expected**: `executionError` should contain "Validation Error" and name the blocked keyword.
+
+### 2. Test Robustness (Numeric Matching)
+If the answer key has `1` but the student query returns `1.0`, our engine will still mark it as **Correct**.
+
+### 3. Test Fairness (Order-Insensitivity)
+Submit a query like `SELECT * FROM students` and ensure it matches the answer key even if the rows or columns are slightly rearranged.
+
+### 4. Test Performance (Timeout)
+Submit `SELECT pg_sleep(11);`.
+- **Expected**: `executionError` should say "Timeout Error: Query exceeded 10s execution limit."
+
+### 5. Test Partial Marks
+If a question has `partialMarks: true`, try a query that returns the correct number of rows but wrong data.
+- **Expected**: `score` should be **50%** of the question's marks.
+
+---
+*For issues related to the Query Engine, contact Group G.*
+
+
+
+# #group-i--question-module
+
+**Overview:** This module manages the creation and retrieval of questions for a specific exam. Its most critical responsibility is **Answer Key Generation**. When a teacher saves a question, this module automatically communicates with the Sandbox (Group D) and Query Engine (Group G) to run the teacher's reference query against the exam's seed data. It captures the resulting data and saves it as a normalized JSON `AnswerKey` for automated grading later.
+
+## Base URL
+```text
+http://localhost:8080/api/exams/{examId}/questions
+```
+
+All endpoints require a valid JWT token in the header:
+```text
+Authorization: Bearer <token>
+```
+
+## Endpoints
+
+### 1. Create a Question (and Generate Answer Key)
+
+```text
+POST /api/exams/{examId}/questions
+```
+> **Requires Role:** `TEACHER` or `ADMIN`
+
+This endpoint saves the question details and triggers the automated Answer Key generation process. It will provision a temporary sandbox, execute the `referenceQuery`, store the JSON output, and tear down the sandbox.
+
+**Request Body:**
+```json
+{
+  "prompt": "Write a query to select all columns from the users table where the age is greater than 21.",
+  "referenceQuery": "SELECT * FROM users WHERE age > 21;",
+  "marks": 10,
+  "orderIndex": 1,
+  "orderSensitive": false,
+  "partialMarks": false
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `prompt` | string | yes | The text displayed to the student |
+| `referenceQuery` | string | yes | The correct SQL query used to generate the answer key |
+| `marks` | integer | yes | Total points awarded for a correct answer |
+| `orderIndex` | integer | yes | The display order of the question in the exam |
+| `orderSensitive` | boolean | no | Defaults to `false`. If true, student rows must match exactly in order |
+| `partialMarks` | boolean | no | Defaults to `false`. Allows 50% credit for row-count matches |
+
+**Response `201 Created`:**
+```json
+{
+  "id": "e8aaee82-f787-4fab-93fa-6fbc1a1e8530",
+  "examId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "prompt": "Write a query to select all columns from the users table where the age is greater than 21.",
+  "referenceQuery": "SELECT * FROM users WHERE age > 21;",
+  "marks": 10,
+  "orderIndex": 1,
+  "orderSensitive": false,
+  "partialMarks": false
+}
+```
+
+*Note: The `AnswerKey` is generated silently in the background and stored in the `answer_keys` table. It is intentionally NOT returned in this response to prevent accidental exposure to students.*
+
+**Error `500 Internal Server Error`:**
+If the `referenceQuery` contains invalid SQL or relies on tables not present in the Exam's `seedSql`, the sandbox will reject it, the transaction will roll back, and the question will **not** be saved.
+
+---
+
+### 2. Get All Questions for an Exam
+
+```text
+GET /api/exams/{examId}/questions
+```
+> **Requires Role:** `TEACHER`, `STUDENT`, or `ADMIN`
+
+Retrieves a list of all questions belonging to a specific exam, ordered by their `orderIndex`.
+
+**Response `200 OK`:**
+```json
+[
+  {
+    "id": "e8aaee82-f787-4fab-93fa-6fbc1a1e8530",
+    "examId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "prompt": "Write a query to select all columns from the users table where the age is greater than 21.",
+    "referenceQuery": "SELECT * FROM users WHERE age > 21;",
+    "marks": 10,
+    "orderIndex": 1,
+    "orderSensitive": false,
+    "partialMarks": false
+  },
+  {
+    "id": "b1ccdd99-a123-4bcc-88df-9cdd2b2f9911",
+    "examId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "prompt": "Count the total number of users.",
+    "referenceQuery": "SELECT COUNT(*) FROM users;",
+    "marks": 5,
+    "orderIndex": 2,
+    "orderSensitive": false,
+    "partialMarks": false
+  }
+]
+```
+*(Note: If a `STUDENT` calls this endpoint, the frontend should ideally hide the `referenceQuery` from the UI unless the exam settings permit showing it).*
+```
+

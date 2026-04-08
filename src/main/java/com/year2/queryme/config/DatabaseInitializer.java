@@ -16,17 +16,18 @@ public class DatabaseInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        System.out.println("--- STARTING ROBUST DATABASE REPAIR ---");
+        // Commented out to prevent database repair crashes
+        // System.out.println("--- STARTING ROBUST DATABASE REPAIR ---");
         
-        repairTable("users");
-        repairTable("teachers");
-        repairTable("courses");
-        repairTable("students");
-        repairTable("admins");
-        repairTable("guests");
-        repairTable("class_groups");
+        // repairTable("users");
+        // repairTable("teachers");
+        // repairTable("courses");
+        // repairTable("students");
+        // repairTable("admins");
+        // repairTable("guests");
+        // repairTable("class_groups");
         
-        System.out.println("--- DATABASE REPAIR COMPLETED ---");
+        // System.out.println("--- DATABASE REPAIR COMPLETED ---");
     }
 
     private void repairTable(String tableName) {
