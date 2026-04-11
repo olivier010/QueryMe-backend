@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/class-groups")
+@RequestMapping("/class-groups")
 public class ClassGroupController {
 
     @Autowired

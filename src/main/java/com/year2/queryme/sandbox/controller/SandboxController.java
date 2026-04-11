@@ -20,7 +20,7 @@ import java.util.UUID;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/sandboxes")
+@RequestMapping("/sandboxes")
 @RequiredArgsConstructor
 public class SandboxController {
 

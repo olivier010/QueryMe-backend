@@ -50,7 +50,7 @@ public class AuthIntegrationTest {
         signupRequest.setPassword("password123");
         signupRequest.setRole(com.year2.queryme.model.enums.UserTypes.STUDENT);
 
-        mockMvc.perform(post("/api/auth/signup")
+        mockMvc.perform(post("/auth/signup")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(signupRequest)))
                 .andExpect(status().isOk())
@@ -61,7 +61,7 @@ public class AuthIntegrationTest {
         loginRequest.setEmail("test@example.com");
         loginRequest.setPassword("password123");
 
-        mockMvc.perform(post("/api/auth/signin")
+        mockMvc.perform(post("/auth/signin")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(loginRequest)))
                 .andExpect(status().isOk())
