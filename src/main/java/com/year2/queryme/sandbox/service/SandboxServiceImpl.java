@@ -2,6 +2,7 @@ package com.year2.queryme.sandbox.service;
 
 import com.year2.queryme.sandbox.dto.SandboxConnectionInfo;
 import com.year2.queryme.repository.ExamRepository;
+import com.year2.queryme.repository.StudentRepository;
 import com.year2.queryme.repository.UserRepository;
 import com.year2.queryme.sandbox.model.SandboxRegistry;
 import com.year2.queryme.sandbox.repository.SandboxRegistryRepo;
@@ -23,6 +24,7 @@ public class SandboxServiceImpl implements SandboxService {
     private final SandboxRegistryRepo registryRepo;
     private final ExamRepository examRepository;
     private final UserRepository userRepository;
+    private final StudentRepository studentRepository;
     private final JdbcTemplate jdbcTemplate;
     private final String dbUsername;
 
@@ -31,12 +33,14 @@ public class SandboxServiceImpl implements SandboxService {
             SandboxRegistryRepo registryRepo,
             ExamRepository examRepository,
             UserRepository userRepository,
+            StudentRepository studentRepository,
             JdbcTemplate jdbcTemplate,
             @Value("${spring.datasource.username}") String dbUsername
     ) {
         this.registryRepo = registryRepo;
         this.examRepository = examRepository;
         this.userRepository = userRepository;
+        this.studentRepository = studentRepository;
         this.jdbcTemplate = jdbcTemplate;
         this.dbUsername = dbUsername;
     }
@@ -44,14 +48,33 @@ public class SandboxServiceImpl implements SandboxService {
     @Override
     @Transactional
     public String provisionSandbox(UUID examId, UUID studentId, String seedSql) {
+        SandboxRegistry existingRegistry = registryRepo.findByExamIdAndStudentId(examId, studentId)
+                .filter(registry -> "ACTIVE".equals(registry.getStatus()))
+                .orElse(null);
+
+        if (existingRegistry != null) {
+            log.info("Reusing existing active sandbox schema: {}", existingRegistry.getSchemaName());
+            return existingRegistry.getSchemaName();
+        }
+
         examRepository.findById(examId.toString())
                 .orElseThrow(() -> new SandboxProvisioningException("Exam not found in registry"));
 
         userRepository.findById(studentId)
                 .orElseThrow(() -> new SandboxProvisioningException("Student not found in Auth registry"));
 
-        String schemaName = "exam_" + examId.toString().replace("-", "") +
-                "_student_" + studentId.toString().replace("-", "");
+        String studentNumber = studentRepository.findByUser_Id(studentId)
+                .map(student -> student.getStudentNumber())
+                .orElseThrow(() -> new SandboxProvisioningException("Student profile is missing"));
+
+        String safeStudentNumber = studentNumber.replaceAll("[^a-zA-Z0-9]", "");
+
+        Long sequenceNumber = jdbcTemplate.queryForObject("SELECT nextval('sandbox_schema_seq')", Long.class);
+        if (sequenceNumber == null) {
+            throw new SandboxProvisioningException("Failed to generate sandbox schema sequence number");
+        }
+
+        String schemaName = "s_" + safeStudentNumber + "_" + sequenceNumber;
 
         log.info("Provisioning sandbox schema: {}", schemaName);
 
@@ -60,8 +83,11 @@ public class SandboxServiceImpl implements SandboxService {
 
             if (seedSql != null && !seedSql.trim().isEmpty()) {
                 jdbcTemplate.execute("SET search_path TO " + schemaName);
-                jdbcTemplate.execute(seedSql);
-                jdbcTemplate.execute("SET search_path TO public");
+                try {
+                    jdbcTemplate.execute(seedSql);
+                } finally {
+                    jdbcTemplate.execute("SET search_path TO public");
+                }
             }
 
             SandboxRegistry registry = new SandboxRegistry();
