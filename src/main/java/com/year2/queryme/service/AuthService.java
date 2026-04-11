@@ -1,6 +1,5 @@
 package com.year2.queryme.service;
 
-import com.year2.queryme.model.User;
 import com.year2.queryme.model.enums.UserTypes;
 import com.year2.queryme.model.dto.JwtResponse;
 import com.year2.queryme.model.dto.LoginRequest;
@@ -15,10 +14,8 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -32,16 +29,10 @@ public class AuthService {
     UserRepository userRepository;
 
     @Autowired
-    PasswordEncoder encoder;
-
-    @Autowired
     JwtUtils jwtUtils;
 
     @Autowired
     StudentService studentService;
-
-    @Autowired
-    TeacherService teacherService;
 
     public ResponseEntity<?> authenticateUser(LoginRequest loginRequest) {
         Authentication authentication = authenticationManager.authenticate(
@@ -70,33 +61,19 @@ public class AuthService {
         }
 
         UserTypes role = (signUpRequest.getRole() != null) ? signUpRequest.getRole() : UserTypes.STUDENT;
-
-        if (role == UserTypes.STUDENT) {
-            studentService.registerStudent(
-                signUpRequest.getEmail(),
-                signUpRequest.getPassword(),
-                signUpRequest.getFullName() != null ? signUpRequest.getFullName() : signUpRequest.getName(),
-                null, null,
-                signUpRequest.getStudentNumber()
-            );
-        } else if (role == UserTypes.TEACHER) {
-            teacherService.registerTeacher(
-                signUpRequest.getEmail(),
-                signUpRequest.getPassword(),
-                signUpRequest.getFullName() != null ? signUpRequest.getFullName() : signUpRequest.getName(),
-                signUpRequest.getDepartment()
-            );
-        } else {
-            // Admin or other
-            User user = User.builder()
-                    .email(signUpRequest.getEmail())
-                    .name(signUpRequest.getFullName() != null ? signUpRequest.getFullName() : signUpRequest.getName())
-                    .passwordHash(encoder.encode(signUpRequest.getPassword()))
-                    .role(role)
-                    .createdAt(LocalDateTime.now())
-                    .build();
-            userRepository.save(user);
+        if (role != UserTypes.STUDENT) {
+            return ResponseEntity
+                    .badRequest()
+                    .body(new MessageResponse("Error: Public signup only supports STUDENT accounts"));
         }
+
+        studentService.registerStudent(
+            signUpRequest.getEmail(),
+            signUpRequest.getPassword(),
+            signUpRequest.getFullName() != null ? signUpRequest.getFullName() : signUpRequest.getName(),
+            null, null,
+            signUpRequest.getStudentNumber()
+        );
 
         return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
     }

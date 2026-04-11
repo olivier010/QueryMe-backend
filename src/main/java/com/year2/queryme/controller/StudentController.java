@@ -1,14 +1,16 @@
 package com.year2.queryme.controller;
 
 import com.year2.queryme.model.Student;
+import com.year2.queryme.model.enums.UserTypes;
 import com.year2.queryme.repository.StudentRepository;
+import com.year2.queryme.service.CurrentUserService;
 import com.year2.queryme.service.StudentService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/students")
@@ -20,7 +22,11 @@ public class StudentController {
     @Autowired
     private StudentRepository studentRepository;
 
+    @Autowired
+    private CurrentUserService currentUserService;
+
     @PostMapping("/register")
+    @PreAuthorize("hasAnyRole('TEACHER', 'ADMIN')")
     public Student register(@RequestBody Map<String, String> data) {
         return studentService.registerStudent(
                 data.get("email"),
@@ -32,18 +38,29 @@ public class StudentController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('STUDENT', 'TEACHER', 'ADMIN')")
     public Student update(@PathVariable Long id, @RequestBody Map<String, String> data) {
         return studentService.updateProfile(id, data);
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('TEACHER', 'ADMIN')")
     public List<Student> getAll() {
         return studentRepository.findAll();
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('STUDENT', 'TEACHER', 'ADMIN')")
     public Student getById(@PathVariable Long id) {
-        return studentRepository.findById(id)
+        Student student = studentRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Student not found with id: " + id));
+
+        if (currentUserService.hasRole(UserTypes.STUDENT)
+                && (student.getUser() == null
+                || !student.getUser().getId().equals(currentUserService.requireCurrentUserId()))) {
+            throw new RuntimeException("Students can only access their own profile");
+        }
+
+        return student;
     }
 }

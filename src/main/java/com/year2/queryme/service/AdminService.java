@@ -24,6 +24,9 @@ public class AdminService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private CurrentUserService currentUserService;
+
     @Transactional
     public Admin registerAdmin(String email, String password, String fullName) {
         // 1. Create User
@@ -48,6 +51,12 @@ public class AdminService {
     public Admin updateProfile(Long adminId, Map<String, String> data) {
         Admin admin = adminRepository.findById(adminId)
                 .orElseThrow(() -> new RuntimeException("Admin not found"));
+
+        if (currentUserService.hasRole(UserTypes.ADMIN)
+                && (admin.getUser() == null
+                || !admin.getUser().getId().equals(currentUserService.requireCurrentUserId()))) {
+            throw new RuntimeException("Admins can only update their own profile");
+        }
 
         if (data.containsKey("fullName")) {
             admin.setFullName(data.get("fullName"));

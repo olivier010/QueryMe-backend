@@ -17,12 +17,17 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.beans.factory.annotation.Value;
 
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
 public class SandboxServiceImpl implements SandboxService {
+
+    private static final Pattern IDENTIFIER_PATTERN = Pattern.compile("^[a-zA-Z_][a-zA-Z0-9_]{0,62}$");
+    private static final String PASSWORD_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_-+=[]{}";
 
     private final SandboxRegistryRepo registryRepo;
     private final ExamRepository examRepository;
@@ -30,6 +35,10 @@ public class SandboxServiceImpl implements SandboxService {
     private final StudentRepository studentRepository;
     private final JdbcTemplate jdbcTemplate;
     private final String dbUsername;
+    private final boolean dbUserIsolationEnabled;
+    private final String sandboxDbUserPrefix;
+    private final int sandboxDbPasswordLength;
+    private final SecureRandom secureRandom = new SecureRandom();
 
     // Uses the standard Spring Boot database connection automatically
     public SandboxServiceImpl(
@@ -38,7 +47,10 @@ public class SandboxServiceImpl implements SandboxService {
             UserRepository userRepository,
             StudentRepository studentRepository,
             @Qualifier("sandboxJdbcTemplate") JdbcTemplate jdbcTemplate,
-            @Value("${queryme.sandbox-datasource.username:${spring.datasource.username}}") String dbUsername
+            @Value("${queryme.sandbox-datasource.username:${spring.datasource.username}}") String dbUsername,
+            @Value("${queryme.sandbox.security.db-user-isolation.enabled:false}") boolean dbUserIsolationEnabled,
+            @Value("${queryme.sandbox.security.db-user-isolation.user-prefix:qb_}") String sandboxDbUserPrefix,
+            @Value("${queryme.sandbox.security.db-user-isolation.password-length:24}") int sandboxDbPasswordLength
     ) {
         this.registryRepo = registryRepo;
         this.examRepository = examRepository;
@@ -46,6 +58,9 @@ public class SandboxServiceImpl implements SandboxService {
         this.studentRepository = studentRepository;
         this.jdbcTemplate = jdbcTemplate;
         this.dbUsername = dbUsername;
+        this.dbUserIsolationEnabled = dbUserIsolationEnabled;
+        this.sandboxDbUserPrefix = sandboxDbUserPrefix;
+        this.sandboxDbPasswordLength = Math.max(16, sandboxDbPasswordLength);
     }
 
     @Override
@@ -76,8 +91,11 @@ public class SandboxServiceImpl implements SandboxService {
         String schemaName = "exam_%s_student_%s".formatted(
                 examId.toString().replace("-", "").substring(0, 8),
                 safeStudentNumber);
+        schemaName = requireSafeIdentifier(schemaName, "schemaName");
 
         log.info("Provisioning sandbox schema: {}", schemaName);
+        String sandboxDbUser = dbUsername;
+        boolean dedicatedRoleCreated = false;
 
         try {
             jdbcTemplate.execute("CREATE SCHEMA IF NOT EXISTS " + schemaName);
@@ -91,11 +109,25 @@ public class SandboxServiceImpl implements SandboxService {
                 }
             }
 
+            if (dbUserIsolationEnabled) {
+                String dedicatedDbUser = buildSandboxDbUser(examId, studentId);
+                String dedicatedDbPassword = generateSecurePassword();
+
+                if (isPostgreSql()) {
+                    ensureDedicatedRoleDropped(dedicatedDbUser);
+                    createDedicatedRole(dedicatedDbUser, dedicatedDbPassword, schemaName);
+                    dedicatedRoleCreated = true;
+                    sandboxDbUser = dedicatedDbUser;
+                } else {
+                    log.warn("Sandbox DB user isolation is enabled but database is not PostgreSQL; skipping dedicated role provisioning");
+                }
+            }
+
             SandboxRegistry registry = new SandboxRegistry();
             registry.setExamId(examId);
             registry.setStudentId(studentId);
             registry.setSchemaName(schemaName);
-            registry.setDbUser(dbUsername);
+            registry.setDbUser(sandboxDbUser);
             registry.setStatus("ACTIVE");
             registry.setExpiresAt(exam.getTimeLimitMins() != null
                     ? LocalDateTime.now().plusMinutes(exam.getTimeLimitMins())
@@ -106,7 +138,19 @@ public class SandboxServiceImpl implements SandboxService {
 
         } catch (Exception e) {
             log.error("Failed to provision sandbox: {}", schemaName, e);
-            jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + schemaName + " CASCADE");
+            try {
+                jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + schemaName + " CASCADE");
+            } catch (Exception cleanupEx) {
+                log.warn("Failed to cleanup schema {} after provisioning error: {}", schemaName, cleanupEx.getMessage());
+            }
+
+            if (dedicatedRoleCreated && sandboxDbUser != null) {
+                try {
+                    ensureDedicatedRoleDropped(sandboxDbUser);
+                } catch (Exception cleanupEx) {
+                    log.warn("Failed to cleanup role {} after provisioning error: {}", sandboxDbUser, cleanupEx.getMessage());
+                }
+            }
             throw new SandboxProvisioningException("Sandbox provisioning failed", e);
         }
     }
@@ -117,9 +161,19 @@ public class SandboxServiceImpl implements SandboxService {
         SandboxRegistry registry = registryRepo.findByExamIdAndStudentId(examId, studentId)
                 .orElseThrow(() -> new SandboxNotFoundException("Sandbox not found for given Exam and Student"));
 
-        log.info("Tearing down sandbox schema: {}", registry.getSchemaName());
+        String schemaName = requireSafeIdentifier(registry.getSchemaName(), "schemaName");
 
-        jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + registry.getSchemaName() + " CASCADE");
+        log.info("Tearing down sandbox schema: {}", schemaName);
+
+        jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + schemaName + " CASCADE");
+
+        if (dbUserIsolationEnabled && registry.getDbUser() != null && registry.getDbUser().startsWith(sandboxDbUserPrefix) && isPostgreSql()) {
+            try {
+                ensureDedicatedRoleDropped(registry.getDbUser());
+            } catch (Exception ex) {
+                log.warn("Failed to drop dedicated sandbox role {}: {}", registry.getDbUser(), ex.getMessage());
+            }
+        }
 
         registry.setStatus("DROPPED");
         registryRepo.save(registry);
@@ -135,5 +189,62 @@ public class SandboxServiceImpl implements SandboxService {
         }
 
         return new SandboxConnectionInfo(registry.getSchemaName(), registry.getDbUser());
+    }
+
+    private String requireSafeIdentifier(String identifier, String fieldName) {
+        if (identifier == null || !IDENTIFIER_PATTERN.matcher(identifier).matches()) {
+            throw new SandboxProvisioningException("Unsafe " + fieldName + " provided");
+        }
+        return identifier;
+    }
+
+    private boolean isPostgreSql() {
+        String productName = jdbcTemplate.execute((java.sql.Connection con) -> con.getMetaData().getDatabaseProductName());
+        return productName != null && productName.toLowerCase().contains("postgresql");
+    }
+
+    private String buildSandboxDbUser(UUID examId, UUID studentId) {
+        String generated = (sandboxDbUserPrefix
+                + examId.toString().replace("-", "").substring(0, 8)
+                + "_"
+                + studentId.toString().replace("-", "").substring(0, 8))
+                .toLowerCase();
+
+        if (generated.length() > 63) {
+            generated = generated.substring(0, 63);
+        }
+
+        return requireSafeIdentifier(generated, "dbUser");
+    }
+
+    private void createDedicatedRole(String dbUser, String password, String schemaName) {
+        String escapedPassword = escapeSqlLiteral(password);
+        jdbcTemplate.execute("CREATE ROLE " + dbUser + " LOGIN PASSWORD '" + escapedPassword + "'");
+        jdbcTemplate.execute("ALTER ROLE " + dbUser + " NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT");
+        jdbcTemplate.execute("ALTER ROLE " + dbUser + " SET search_path = " + schemaName);
+        jdbcTemplate.execute("REVOKE ALL ON SCHEMA public FROM " + dbUser);
+        jdbcTemplate.execute("GRANT USAGE ON SCHEMA " + schemaName + " TO " + dbUser);
+        jdbcTemplate.execute("GRANT SELECT ON ALL TABLES IN SCHEMA " + schemaName + " TO " + dbUser);
+        jdbcTemplate.execute("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA " + schemaName + " TO " + dbUser);
+        jdbcTemplate.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA " + schemaName + " GRANT SELECT ON TABLES TO " + dbUser);
+        jdbcTemplate.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA " + schemaName + " GRANT USAGE, SELECT ON SEQUENCES TO " + dbUser);
+    }
+
+    private void ensureDedicatedRoleDropped(String dbUser) {
+        String safeDbUser = requireSafeIdentifier(dbUser, "dbUser");
+        jdbcTemplate.execute("DROP ROLE IF EXISTS " + safeDbUser);
+    }
+
+    private String generateSecurePassword() {
+        StringBuilder password = new StringBuilder(sandboxDbPasswordLength);
+        for (int i = 0; i < sandboxDbPasswordLength; i++) {
+            int index = secureRandom.nextInt(PASSWORD_CHARS.length());
+            password.append(PASSWORD_CHARS.charAt(index));
+        }
+        return password.toString();
+    }
+
+    private String escapeSqlLiteral(String value) {
+        return value == null ? "" : value.replace("'", "''");
     }
 }
