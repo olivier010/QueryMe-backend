@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/course-enrollments")
+@RequestMapping("/course-enrollments")
 public class CourseEnrollmentController {
 
     @Autowired

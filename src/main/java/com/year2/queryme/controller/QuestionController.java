@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/exams/{examId}/questions")
+@RequestMapping("/exams/{examId}/questions")
 @RequiredArgsConstructor
 public class QuestionController {
 

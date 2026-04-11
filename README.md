@@ -97,10 +97,10 @@ These backend changes now match the intended QueryMe flow more closely:
 - API request validation and centralized JSON error handling are enabled.
 - CORS allowlist is controlled by `queryme.security.cors.allowed-origins`.
 - Public endpoints in the current config are:
-  - `POST /api/auth/signin`
-  - `POST /api/auth/signup`
-  - `GET /api/courses`
-  - `GET /api/class-groups/**`
+  - `POST /auth/signin`
+  - `POST /auth/signup`
+  - `GET /courses`
+  - `GET /class-groups/**`
 - Public signup only supports student registration; elevated roles are not public-signup capable.
 - Teacher/admin writes are enforced for exam mutation and course enrollment endpoints.
 - Students can start and submit their own sessions, but exam-wide session listings are teacher/admin only.
@@ -114,12 +114,12 @@ Authorization: Bearer <jwt>
 
 ## Group J - Auth
 
-Base path: `/api/auth`
+Base path: `/auth`
 
 | Method | Path | What it does | Access |
 |---|---|---|---|
-| `POST` | `/api/auth/signup` | Registers a student user with shared auth credentials. Accepts student fields; non-student roles are rejected. | Public |
-| `POST` | `/api/auth/signin` | Authenticates a user and returns the JWT payload. | Public |
+| `POST` | `/auth/signup` | Registers a student user with shared auth credentials. Accepts student fields; non-student roles are rejected. | Public |
+| `POST` | `/auth/signin` | Authenticates a user and returns the JWT payload. | Public |
 
 Notes:
 
@@ -135,39 +135,39 @@ These endpoints own profile records, course structure, and teacher-driven studen
 
 | Method | Path | What it does | Access |
 |---|---|---|---|
-| `POST` | `/api/teachers/register` | Creates a teacher profile. | `ADMIN` |
-| `PUT` | `/api/teachers/{id}` | Updates a teacher profile. | `TEACHER` or `ADMIN` |
-| `GET` | `/api/teachers` | Lists teachers. | `TEACHER` or `ADMIN` |
-| `POST` | `/api/students/register` | Creates a student profile. | `TEACHER` or `ADMIN` |
-| `PUT` | `/api/students/{id}` | Updates student profile fields such as name, password, course, and class group. | `STUDENT`, `TEACHER`, or `ADMIN` |
-| `GET` | `/api/students` | Lists students. | `TEACHER` or `ADMIN` |
-| `GET` | `/api/students/{id}` | Fetches one student profile by numeric student-table id. | `STUDENT`, `TEACHER`, or `ADMIN` |
+| `POST` | `/teachers/register` | Creates a teacher profile. | `ADMIN` |
+| `PUT` | `/teachers/{id}` | Updates a teacher profile. | `TEACHER` or `ADMIN` |
+| `GET` | `/teachers` | Lists teachers. | `TEACHER` or `ADMIN` |
+| `POST` | `/students/register` | Creates a student profile. | `TEACHER` or `ADMIN` |
+| `PUT` | `/students/{id}` | Updates student profile fields such as name, password, course, and class group. | `STUDENT`, `TEACHER`, or `ADMIN` |
+| `GET` | `/students` | Lists students. | `TEACHER` or `ADMIN` |
+| `GET` | `/students/{id}` | Fetches one student profile by numeric student-table id. | `STUDENT`, `TEACHER`, or `ADMIN` |
 
 ### Courses, Class Groups, and Enrollment
 
 | Method | Path | What it does | Access |
 |---|---|---|---|
-| `POST` | `/api/courses` | Creates a course linked to the logged-in teacher. | `TEACHER` |
-| `GET` | `/api/courses` | Lists all courses. | Public |
-| `POST` | `/api/class-groups` | Creates a class group. | `TEACHER` |
-| `GET` | `/api/class-groups` | Lists all class groups. | Public |
-| `GET` | `/api/class-groups/course/{courseId}` | Lists class groups for one course. | Public |
-| `POST` | `/api/course-enrollments` | Enrolls a student into a course. | `TEACHER` or `ADMIN` |
-| `GET` | `/api/course-enrollments` | Lists all enrollments. | `TEACHER` or `ADMIN` |
-| `GET` | `/api/course-enrollments/course/{courseId}` | Lists enrollments for one course. | `TEACHER` or `ADMIN` |
-| `GET` | `/api/course-enrollments/student/{studentId}` | Lists enrollments for one student. | `TEACHER` or `ADMIN` |
-| `DELETE` | `/api/course-enrollments` | Removes an enrollment. | `TEACHER` or `ADMIN` |
+| `POST` | `/courses` | Creates a course linked to the logged-in teacher. | `TEACHER` |
+| `GET` | `/courses` | Lists all courses. | Public |
+| `POST` | `/class-groups` | Creates a class group. | `TEACHER` |
+| `GET` | `/class-groups` | Lists all class groups. | Public |
+| `GET` | `/class-groups/course/{courseId}` | Lists class groups for one course. | Public |
+| `POST` | `/course-enrollments` | Enrolls a student into a course. | `TEACHER` or `ADMIN` |
+| `GET` | `/course-enrollments` | Lists all enrollments. | `TEACHER` or `ADMIN` |
+| `GET` | `/course-enrollments/course/{courseId}` | Lists enrollments for one course. | `TEACHER` or `ADMIN` |
+| `GET` | `/course-enrollments/student/{studentId}` | Lists enrollments for one student. | `TEACHER` or `ADMIN` |
+| `DELETE` | `/course-enrollments` | Removes an enrollment. | `TEACHER` or `ADMIN` |
 
 ### Additional Account Endpoints Present in the Codebase
 
 | Method | Path | What it does | Access |
 |---|---|---|---|
-| `POST` | `/api/admins/register` | Creates an admin profile. | `ADMIN` |
-| `PUT` | `/api/admins/{id}` | Updates an admin profile. | `ADMIN` |
-| `GET` | `/api/admins` | Lists admins. | `ADMIN` |
-| `POST` | `/api/guests/register` | Creates a guest profile. | `ADMIN` |
-| `PUT` | `/api/guests/{id}` | Updates a guest profile. | `GUEST` |
-| `GET` | `/api/guests` | Lists guests. | `GUEST` |
+| `POST` | `/admins/register` | Creates an admin profile. | `ADMIN` |
+| `PUT` | `/admins/{id}` | Updates an admin profile. | `ADMIN` |
+| `GET` | `/admins` | Lists admins. | `ADMIN` |
+| `POST` | `/guests/register` | Creates a guest profile. | `ADMIN` |
+| `PUT` | `/guests/{id}` | Updates a guest profile. | `GUEST` |
+| `GET` | `/guests` | Lists guests. | `GUEST` |
 
 Notes:
 
@@ -176,7 +176,7 @@ Notes:
 
 ## Group A - Exam Module
 
-Base path: `/api/exams`
+Base path: `/exams`
 
 Exam lifecycle in the current service:
 
@@ -199,15 +199,15 @@ DRAFT -> PUBLISHED -> CLOSED
 
 | Method | Path | What it does | Access |
 |---|---|---|---|
-| `POST` | `/api/exams` | Creates a draft exam. | `TEACHER` or `ADMIN` |
-| `GET` | `/api/exams/{examId}` | Fetches one exam. | `STUDENT`, `TEACHER`, or `ADMIN` |
-| `GET` | `/api/exams/course/{courseId}` | Lists exams for one course. | `STUDENT`, `TEACHER`, or `ADMIN` |
-| `GET` | `/api/exams/published` | Lists published exams visible to the current user. | `STUDENT`, `TEACHER`, or `ADMIN` |
-| `PUT` | `/api/exams/{examId}` | Updates a draft exam. | `TEACHER` or `ADMIN` |
-| `PATCH` | `/api/exams/{examId}/publish` | Publishes a draft exam. | `TEACHER` or `ADMIN` |
-| `PATCH` | `/api/exams/{examId}/unpublish` | Moves a published exam back to draft. | `TEACHER` or `ADMIN` |
-| `PATCH` | `/api/exams/{examId}/close` | Closes a published exam. | `TEACHER` or `ADMIN` |
-| `DELETE` | `/api/exams/{examId}` | Deletes a draft exam. | `TEACHER` or `ADMIN` |
+| `POST` | `/exams` | Creates a draft exam. | `TEACHER` or `ADMIN` |
+| `GET` | `/exams/{examId}` | Fetches one exam. | `STUDENT`, `TEACHER`, or `ADMIN` |
+| `GET` | `/exams/course/{courseId}` | Lists exams for one course. | `STUDENT`, `TEACHER`, or `ADMIN` |
+| `GET` | `/exams/published` | Lists published exams visible to the current user. | `STUDENT`, `TEACHER`, or `ADMIN` |
+| `PUT` | `/exams/{examId}` | Updates a draft exam. | `TEACHER` or `ADMIN` |
+| `PATCH` | `/exams/{examId}/publish` | Publishes a draft exam. | `TEACHER` or `ADMIN` |
+| `PATCH` | `/exams/{examId}/unpublish` | Moves a published exam back to draft. | `TEACHER` or `ADMIN` |
+| `PATCH` | `/exams/{examId}/close` | Closes a published exam. | `TEACHER` or `ADMIN` |
+| `DELETE` | `/exams/{examId}` | Deletes a draft exam. | `TEACHER` or `ADMIN` |
 
 Notes:
 
@@ -219,7 +219,7 @@ Notes:
 
 ## Group I - Question Module
 
-Base path: `/api/exams/{examId}/questions`
+Base path: `/exams/{examId}/questions`
 
 When a teacher creates or updates a question, the service:
 
@@ -240,9 +240,9 @@ When a teacher creates or updates a question, the service:
 
 | Method | Path | What it does | Access |
 |---|---|---|---|
-| `POST` | `/api/exams/{examId}/questions` | Creates a question and generates the answer key immediately. | `TEACHER` or `ADMIN` |
-| `PUT` | `/api/exams/{examId}/questions/{questionId}` | Updates a question and regenerates the answer key immediately. | `TEACHER` or `ADMIN` |
-| `GET` | `/api/exams/{examId}/questions` | Lists questions ordered by `orderIndex`. | `STUDENT`, `TEACHER`, or `ADMIN` |
+| `POST` | `/exams/{examId}/questions` | Creates a question and generates the answer key immediately. | `TEACHER` or `ADMIN` |
+| `PUT` | `/exams/{examId}/questions/{questionId}` | Updates a question and regenerates the answer key immediately. | `TEACHER` or `ADMIN` |
+| `GET` | `/exams/{examId}/questions` | Lists questions ordered by `orderIndex`. | `STUDENT`, `TEACHER`, or `ADMIN` |
 
 Notes:
 
@@ -256,7 +256,7 @@ The runtime exam attempt flow is split into session endpoints and direct sandbox
 
 ### Session Lifecycle
 
-Base path: `/api/sessions`
+Base path: `/sessions`
 
 `StartSessionRequest` supports:
 
@@ -265,11 +265,11 @@ Base path: `/api/sessions`
 
 | Method | Path | What it does | Access |
 |---|---|---|---|
-| `POST` | `/api/sessions/start` | Starts a session, validates assignment, provisions the sandbox, and stores the real schema name. | `STUDENT`, `TEACHER`, or `ADMIN` |
-| `PATCH` | `/api/sessions/{sessionId}/submit` | Submits the session and tears the sandbox down. | `STUDENT`, `TEACHER`, or `ADMIN` |
-| `GET` | `/api/sessions/{sessionId}` | Returns one session. Students are limited to their own sessions. | `STUDENT`, `TEACHER`, or `ADMIN` |
-| `GET` | `/api/sessions/student/{studentId}` | Lists sessions for one student. Students are limited to their own sessions. | `STUDENT`, `TEACHER`, or `ADMIN` |
-| `GET` | `/api/sessions/exam/{examId}` | Lists sessions for one exam. | `TEACHER` or `ADMIN` |
+| `POST` | `/sessions/start` | Starts a session, validates assignment, provisions the sandbox, and stores the real schema name. | `STUDENT`, `TEACHER`, or `ADMIN` |
+| `PATCH` | `/sessions/{sessionId}/submit` | Submits the session and tears the sandbox down. | `STUDENT`, `TEACHER`, or `ADMIN` |
+| `GET` | `/sessions/{sessionId}` | Returns one session. Students are limited to their own sessions. | `STUDENT`, `TEACHER`, or `ADMIN` |
+| `GET` | `/sessions/student/{studentId}` | Lists sessions for one student. Students are limited to their own sessions. | `STUDENT`, `TEACHER`, or `ADMIN` |
+| `GET` | `/sessions/exam/{examId}` | Lists sessions for one exam. | `TEACHER` or `ADMIN` |
 
 Session response fields include:
 
@@ -294,28 +294,28 @@ Current behavior:
 
 ### Direct Sandbox Endpoints
 
-Base path: `/api/sandboxes`
+Base path: `/sandboxes`
 
 | Method | Path | What it does | Access |
 |---|---|---|---|
-| `POST` | `/api/sandboxes/provision` | Provisions or reuses a sandbox schema and seeds it with the supplied SQL. | `TEACHER` or `ADMIN` |
-| `GET` | `/api/sandboxes/{examId}/students/{studentId}` | Returns sandbox connection details for an active schema. | `TEACHER` or `ADMIN` |
-| `DELETE` | `/api/sandboxes/{examId}/students/{studentId}` | Drops the sandbox schema and marks it dropped in the registry. | `TEACHER` or `ADMIN` |
+| `POST` | `/sandboxes/provision` | Provisions or reuses a sandbox schema and seeds it with the supplied SQL. | `TEACHER` or `ADMIN` |
+| `GET` | `/sandboxes/{examId}/students/{studentId}` | Returns sandbox connection details for an active schema. | `TEACHER` or `ADMIN` |
+| `DELETE` | `/sandboxes/{examId}/students/{studentId}` | Drops the sandbox schema and marks it dropped in the registry. | `TEACHER` or `ADMIN` |
 
 Notes:
 
-- The normal student flow should use `/api/sessions/start`, not manual sandbox provisioning.
+- The normal student flow should use `/sessions/start`, not manual sandbox provisioning.
 - Sandbox schema names now follow the exam/student identity pattern instead of relying on a local README-only sequence.
 - Sandbox connection info comes from the configured sandbox data source.
 - Optional hardening mode can provision a dedicated PostgreSQL role per sandbox (`SANDBOX_DB_USER_ISOLATION_ENABLED=true`) with restricted schema access and automatic role cleanup on teardown.
 
 ## Group G - Query Engine
 
-Base path: `/api/query`
+Base path: `/query`
 
 | Method | Path | What it does | Access |
 |---|---|---|---|
-| `POST` | `/api/query/submit` | Grades one student SQL submission against the answer key. | `STUDENT`, `TEACHER`, or `ADMIN` |
+| `POST` | `/query/submit` | Grades one student SQL submission against the answer key. | `STUDENT`, `TEACHER`, or `ADMIN` |
 
 `SubmissionRequest` supports:
 
@@ -368,16 +368,16 @@ Visibility behavior on submit:
 
 ## Group C - Results Module
 
-Base path: `/api/results`
+Base path: `/results`
 
 | Method | Path | What it does | Access |
 |---|---|---|---|
-| `GET` | `/api/results/session/{sessionId}` | Returns the student-facing result view for a single session. | `STUDENT`, `TEACHER`, or `ADMIN` |
-| `GET` | `/api/results/exam/{examId}/dashboard` | Returns the teacher dashboard rows for an exam. | `TEACHER` or `ADMIN` |
+| `GET` | `/results/session/{sessionId}` | Returns the student-facing result view for a single session. | `STUDENT`, `TEACHER`, or `ADMIN` |
+| `GET` | `/results/exam/{examId}/dashboard` | Returns the teacher dashboard rows for an exam. | `TEACHER` or `ADMIN` |
 
 ### Student Result View
 
-`GET /api/results/session/{sessionId}` now returns `StudentExamResultDto`, not raw `Result` entities.
+`GET /results/session/{sessionId}` now returns `StudentExamResultDto`, not raw `Result` entities.
 
 Top-level fields:
 
@@ -410,7 +410,7 @@ Current visibility behavior:
 
 ### Teacher Dashboard
 
-`GET /api/results/exam/{examId}/dashboard` returns one row per latest student submission per question:
+`GET /results/exam/{examId}/dashboard` returns one row per latest student submission per question:
 
 - `studentId`
 - `studentName`
@@ -432,6 +432,6 @@ Notes:
 
 These are still worth knowing while working on the backend:
 
-- `GET /api/students/{id}` enforces student self-access while teacher/admin can read any student
+- `GET /students/{id}` enforces student self-access while teacher/admin can read any student
 - partial marking is intentionally simple right now: half marks when row count matches and `partialMarks` is enabled
 - there is still no dedicated backend feature for revealing teacher reference queries to students after an exam, which matches the project brief's nice-to-have scope rather than its must-have scope
