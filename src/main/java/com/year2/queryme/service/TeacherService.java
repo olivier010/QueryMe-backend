@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
-import java.util.UUID;
 
 @Service
 public class TeacherService {
@@ -24,6 +23,9 @@ public class TeacherService {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private CurrentUserService currentUserService;
 
     @Transactional
     public Teacher registerTeacher(String email, String password, String fullName, String department) {
@@ -50,6 +52,12 @@ public class TeacherService {
     public Teacher updateProfile(Long teacherId, Map<String, String> data) {
         Teacher teacher = teacherRepository.findById(teacherId)
                 .orElseThrow(() -> new RuntimeException("Teacher not found with id: " + teacherId));
+
+        if (currentUserService.hasRole(UserTypes.TEACHER)
+                && (teacher.getUser() == null
+                || !teacher.getUser().getId().equals(currentUserService.requireCurrentUserId()))) {
+            throw new RuntimeException("Teachers can only update their own profile");
+        }
 
         if (data.containsKey("fullName")) {
             teacher.setFullName(data.get("fullName"));

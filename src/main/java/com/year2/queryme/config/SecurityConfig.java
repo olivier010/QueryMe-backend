@@ -2,12 +2,15 @@ package com.year2.queryme.config;
 
 import com.year2.queryme.security.JwtAuthFilter;
 import com.year2.queryme.security.UserDetailsServiceImpl;
+import com.year2.queryme.security.AuthEntryPointJwt;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -15,8 +18,15 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -25,12 +35,21 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final UserDetailsServiceImpl userDetailsService;
+    private final AuthEntryPointJwt authEntryPointJwt;
+    private final List<String> allowedOrigins;
 
     // ✅ Constructor Injection (BEST PRACTICE)
     public SecurityConfig(JwtAuthFilter jwtAuthFilter,
-            UserDetailsServiceImpl userDetailsService) {
+            UserDetailsServiceImpl userDetailsService,
+            AuthEntryPointJwt authEntryPointJwt,
+            @Value("${queryme.security.cors.allowed-origins:http://localhost:3000,http://localhost:5173}") String allowedOrigins) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.userDetailsService = userDetailsService;
+        this.authEntryPointJwt = authEntryPointJwt;
+        this.allowedOrigins = Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .toList();
     }
 
     @Bean
@@ -39,17 +58,25 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
 
+                .cors(Customizer.withDefaults())
+
+                .headers(headers -> headers
+                    .contentTypeOptions(Customizer.withDefaults())
+                    .frameOptions(frame -> frame.deny())
+                    .xssProtection(xss -> xss.disable())
+                    .referrerPolicy(referrer -> referrer.policy(org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
+                    .cacheControl(Customizer.withDefaults()))
+
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
                 .authorizeHttpRequests(auth -> auth
 
+                    .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
                         // ── Public endpoints ─────────────────────────────
                         .requestMatchers("/error").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/auth/signup").permitAll()
-                        .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/teachers/register").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/admins/register").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/guests/register").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/auth/signin").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/auth/signup").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/courses").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/class-groups/**").permitAll()
 
@@ -61,8 +88,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/courses").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/class-groups/**").permitAll()
 
-                        .requestMatchers(HttpMethod.GET, "/api/teachers").hasRole("TEACHER")
-                        .requestMatchers(HttpMethod.PUT, "/api/teachers/**").hasRole("TEACHER")
+                        .requestMatchers(HttpMethod.GET, "/api/teachers").hasAnyRole("TEACHER", "ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/teachers/**").hasAnyRole("TEACHER", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/teachers/register").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/admins/register").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/guests/register").hasRole("ADMIN")
 
                         // ── TEACHER or ADMIN ───────────────────────────
                         .requestMatchers(HttpMethod.POST, "/api/students/register")
@@ -88,6 +118,8 @@ public class SecurityConfig {
 
                         // ── STUDENT, TEACHER, ADMIN ────────────────────
                         .requestMatchers(HttpMethod.PUT, "/api/students/**")
+                        .hasAnyRole("STUDENT", "TEACHER", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/students/*")
                         .hasAnyRole("STUDENT", "TEACHER", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/exams/**")
                         .hasAnyRole("STUDENT", "TEACHER", "ADMIN")
@@ -115,18 +147,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/guests").hasRole("GUEST")
                         .requestMatchers(HttpMethod.PUT, "/api/guests/**").hasRole("GUEST")
 
-                        // ── Authenticated ──────────────────────────────
-                        .requestMatchers("/api/auth/me").authenticated()
-
                         // ── Everything else ────────────────────────────
                         .anyRequest().authenticated())
 
                 .exceptionHandling(exception -> exception
-                        .authenticationEntryPoint((request, response, authException) -> {
-                            response.setContentType("application/json");
-                            response.setStatus(403);
-                            response.getWriter().write("{\"error\": \"Access Denied\", \"message\": \"" + authException.getMessage() + "\"}");
-                        }))
+                        .authenticationEntryPoint(authEntryPointJwt)
+                        .accessDeniedHandler(accessDeniedHandler()))
 
                 // ✅ FIXED Authentication Provider
                 .authenticationProvider(authenticationProvider())
@@ -158,5 +184,29 @@ public class SecurityConfig {
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config)
             throws Exception {
         return config.getAuthenticationManager();
+    }
+
+    @Bean
+    public AccessDeniedHandler accessDeniedHandler() {
+        return (request, response, accessDeniedException) -> {
+            response.setContentType("application/json");
+            response.setStatus(403);
+            response.getWriter().write("{\"error\":\"Forbidden\",\"message\":\"" + accessDeniedException.getMessage() + "\"}");
+        };
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(allowedOrigins);
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setExposedHeaders(List.of("Authorization"));
+        configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 }

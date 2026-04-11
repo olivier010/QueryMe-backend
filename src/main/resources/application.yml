@@ -10,7 +10,7 @@ spring:
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: none
+      ddl-auto: update
     show-sql: true
     open-in-view: false
     properties:
@@ -22,11 +22,20 @@ server:
   port: ${APP_PORT:8085}
 
 queryme:
+  security:
+    cors:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
   sandbox-datasource:
     url: ${SANDBOX_DB_URL:${spring.datasource.url}}
     username: ${SANDBOX_DB_USER:${spring.datasource.username}}
     password: ${SANDBOX_DB_PASSWORD:${spring.datasource.password}}
     driver-class-name: ${SANDBOX_DB_DRIVER:${spring.datasource.driver-class-name}}
+  sandbox:
+    security:
+      db-user-isolation:
+        enabled: ${SANDBOX_DB_USER_ISOLATION_ENABLED:false}
+        user-prefix: ${SANDBOX_DB_USER_PREFIX:qb_}
+        password-length: ${SANDBOX_DB_USER_PASSWORD_LENGTH:24}
   app:
     jwtSecret: ${JWT_SECRET:QueryMeApplicationSecretKeyMustBeLongEnoughForHMACSHA256SignatureAlgorithm}
     jwtExpirationMs: ${JWT_EXPIRATION:86400000}

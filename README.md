@@ -18,7 +18,7 @@ This README is backend-focused and grouped by the team/module ownership describe
 - App data source: `spring.datasource`
 - Sandbox data source: `queryme.sandbox-datasource.*`
 - Roles in code: `TEACHER`, `STUDENT`, `ADMIN`, `GUEST`
-- Server port: `8084`
+- Server port: `8085` (default, configurable with `APP_PORT`)
 
 The sandbox connection now supports a separate PostgreSQL database, which matches the intended `queryme_app` / `queryme_sandbox` split. For local development, the sandbox data source falls back to the main data source if sandbox-specific environment variables are not set.
 
@@ -50,6 +50,16 @@ Optional sandbox database environment variables:
 - `SANDBOX_DB_USER`
 - `SANDBOX_DB_PASSWORD`
 - `SANDBOX_DB_DRIVER`
+
+Optional security environment variables:
+
+- `CORS_ALLOWED_ORIGINS` comma-separated allowed origins for API CORS
+
+Optional advanced sandbox isolation variables:
+
+- `SANDBOX_DB_USER_ISOLATION_ENABLED` enable per-sandbox DB-role provisioning (PostgreSQL only)
+- `SANDBOX_DB_USER_PREFIX` username prefix for generated sandbox DB users
+- `SANDBOX_DB_USER_PASSWORD_LENGTH` generated sandbox DB user password length
 
 ## Alignment Highlights
 
@@ -84,13 +94,14 @@ These backend changes now match the intended QueryMe flow more closely:
 - JWT auth is enforced by `JwtAuthFilter`.
 - Method security is enabled through `@EnableMethodSecurity`.
 - Scheduling is enabled through `@EnableScheduling`.
+- API request validation and centralized JSON error handling are enabled.
+- CORS allowlist is controlled by `queryme.security.cors.allowed-origins`.
 - Public endpoints in the current config are:
-  - `POST /api/auth/**`
-  - `POST /api/teachers/register`
-  - `POST /api/admins/register`
-  - `POST /api/guests/register`
+  - `POST /api/auth/signin`
+  - `POST /api/auth/signup`
   - `GET /api/courses`
   - `GET /api/class-groups/**`
+- Public signup only supports student registration; elevated roles are not public-signup capable.
 - Teacher/admin writes are enforced for exam mutation and course enrollment endpoints.
 - Students can start and submit their own sessions, but exam-wide session listings are teacher/admin only.
 - Manual sandbox endpoints are teacher/admin only.
@@ -107,13 +118,14 @@ Base path: `/api/auth`
 
 | Method | Path | What it does | Access |
 |---|---|---|---|
-| `POST` | `/api/auth/signup` | Registers a user with shared auth credentials. Supports `email`, `password`, `fullName`, `role`, plus optional student fields. | Public |
+| `POST` | `/api/auth/signup` | Registers a student user with shared auth credentials. Accepts student fields; non-student roles are rejected. | Public |
 | `POST` | `/api/auth/signin` | Authenticates a user and returns the JWT payload. | Public |
 
 Notes:
 
 - Signup creates credentials in the shared `users` auth table.
-- For `STUDENT` and `TEACHER`, signup also creates the matching profile record used by the other modules.
+- Public signup creates `STUDENT` accounts only.
+- Teacher/admin/guest accounts are restricted to admin-managed registration endpoints.
 
 ## Group F - User and Student Management
 
@@ -123,13 +135,13 @@ These endpoints own profile records, course structure, and teacher-driven studen
 
 | Method | Path | What it does | Access |
 |---|---|---|---|
-| `POST` | `/api/teachers/register` | Creates a teacher profile. | Public |
-| `PUT` | `/api/teachers/{id}` | Updates a teacher profile. | `TEACHER` |
-| `GET` | `/api/teachers` | Lists teachers. | `TEACHER` |
+| `POST` | `/api/teachers/register` | Creates a teacher profile. | `ADMIN` |
+| `PUT` | `/api/teachers/{id}` | Updates a teacher profile. | `TEACHER` or `ADMIN` |
+| `GET` | `/api/teachers` | Lists teachers. | `TEACHER` or `ADMIN` |
 | `POST` | `/api/students/register` | Creates a student profile. | `TEACHER` or `ADMIN` |
 | `PUT` | `/api/students/{id}` | Updates student profile fields such as name, password, course, and class group. | `STUDENT`, `TEACHER`, or `ADMIN` |
 | `GET` | `/api/students` | Lists students. | `TEACHER` or `ADMIN` |
-| `GET` | `/api/students/{id}` | Fetches one student profile by numeric student-table id. | Authenticated |
+| `GET` | `/api/students/{id}` | Fetches one student profile by numeric student-table id. | `STUDENT`, `TEACHER`, or `ADMIN` |
 
 ### Courses, Class Groups, and Enrollment
 
@@ -150,10 +162,10 @@ These endpoints own profile records, course structure, and teacher-driven studen
 
 | Method | Path | What it does | Access |
 |---|---|---|---|
-| `POST` | `/api/admins/register` | Creates an admin profile. | Public |
+| `POST` | `/api/admins/register` | Creates an admin profile. | `ADMIN` |
 | `PUT` | `/api/admins/{id}` | Updates an admin profile. | `ADMIN` |
 | `GET` | `/api/admins` | Lists admins. | `ADMIN` |
-| `POST` | `/api/guests/register` | Creates a guest profile. | Public |
+| `POST` | `/api/guests/register` | Creates a guest profile. | `ADMIN` |
 | `PUT` | `/api/guests/{id}` | Updates a guest profile. | `GUEST` |
 | `GET` | `/api/guests` | Lists guests. | `GUEST` |
 
@@ -295,6 +307,7 @@ Notes:
 - The normal student flow should use `/api/sessions/start`, not manual sandbox provisioning.
 - Sandbox schema names now follow the exam/student identity pattern instead of relying on a local README-only sequence.
 - Sandbox connection info comes from the configured sandbox data source.
+- Optional hardening mode can provision a dedicated PostgreSQL role per sandbox (`SANDBOX_DB_USER_ISOLATION_ENABLED=true`) with restricted schema access and automatic role cleanup on teardown.
 
 ## Group G - Query Engine
 
@@ -322,6 +335,13 @@ What happens during grading:
 6. the result set is compared to the stored answer key
 7. a submission row is saved with score, correctness, and captured result-set JSON
 8. the results module is notified so the `results` table stays synchronized
+
+Submission SQL constraints in current implementation:
+
+- only read-style queries (`SELECT` / `WITH`) are accepted
+- multi-statement submissions are rejected
+- SQL comments in submissions are rejected
+- destructive/admin keywords are blocked
 
 Current scoring behavior:
 
@@ -412,6 +432,6 @@ Notes:
 
 These are still worth knowing while working on the backend:
 
-- `GET /api/students/{id}` is still a general authenticated read endpoint in the current controller layer
+- `GET /api/students/{id}` enforces student self-access while teacher/admin can read any student
 - partial marking is intentionally simple right now: half marks when row count matches and `partialMarks` is enabled
 - there is still no dedicated backend feature for revealing teacher reference queries to students after an exam, which matches the project brief's nice-to-have scope rather than its must-have scope
