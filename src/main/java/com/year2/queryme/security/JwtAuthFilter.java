@@ -18,7 +18,7 @@ import java.io.IOException;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Autowired
-    private JwtUtil jwtUtil;
+    private JwtUtils jwtUtils;
 
     @Autowired
     private UserDetailsServiceImpl userDetailsService;
@@ -40,13 +40,18 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         final String jwt = authHeader.substring(7);
 
         try {
-            final String email = jwtUtil.extractEmail(jwt);
+            if (!jwtUtils.validateJwtToken(jwt)) {
+                filterChain.doFilter(request, response);
+                return;
+            }
+
+            final String email = jwtUtils.getUserNameFromJwtToken(jwt);
 
             // Only process if email found and not already authenticated
             if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserDetails userDetails = userDetailsService.loadUserByUsername(email);
 
-                if (jwtUtil.isTokenValid(jwt, userDetails)) {
+                if (email.equals(userDetails.getUsername())) {
                     UsernamePasswordAuthenticationToken authToken =
                             new UsernamePasswordAuthenticationToken(
                                     userDetails,
@@ -56,12 +61,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     authToken.setDetails(
                             new WebAuthenticationDetailsSource().buildDetails(request)
                     );
-                    
-                    System.out.println("--- JWT DIAGNOSTIC ---");
-                    System.out.println("Email found in token: [" + email + "]");
-                    System.out.println("Authorities assigned: " + userDetails.getAuthorities());
-                    System.out.println("----------------------");
-                    
+
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
             }

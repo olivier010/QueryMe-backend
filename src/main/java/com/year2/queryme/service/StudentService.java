@@ -8,6 +8,8 @@ import com.year2.queryme.repository.ClassGroupRepository;
 import com.year2.queryme.repository.CourseRepository;
 import com.year2.queryme.repository.StudentRepository;
 import com.year2.queryme.repository.UserRepository;
+
+import java.time.LocalDateTime;
 import com.year2.queryme.model.enums.UserTypes;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -34,9 +36,12 @@ public class StudentService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private CurrentUserService currentUserService;
+
     @Transactional
     public Student registerStudent(String email, String password, String fullName,
-                                   Long courseId, Long classGroupId) {
+                                   Long courseId, Long classGroupId, String studentNumber) {
         // 1. Create User with BCrypt-encoded password
         User user = User.builder()
                 .email(email)
@@ -46,13 +51,21 @@ public class StudentService {
                 .build();
         userRepository.save(user);
 
-        // 2. Get Course (required)
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new RuntimeException("Course not found with id: " + courseId));
+        // 2. Get Course (optional at registration if from auth service)
+        Course course = (courseId != null) ? courseRepository.findById(courseId).orElse(null) : null;
+
+        // Split full name for shared DB legacy columns
+        String[] nameParts = fullName != null ? fullName.split(" ", 2) : new String[]{"Unknown", ""};
+        String firstName = nameParts[0];
+        String lastName = nameParts.length > 1 ? nameParts[1] : "";
 
         // 3. Create Student linked to User, Course and optional ClassGroup
         Student student = Student.builder()
                 .fullName(fullName)
+                .firstName(firstName)
+                .lastName(lastName)
+                .registeredAt(LocalDateTime.now())
+                .studentNumber(studentNumber)
                 .user(user)
                 .course(course)
                 .classGroup(classGroupId != null
@@ -68,6 +81,16 @@ public class StudentService {
         Student student = studentRepository.findById(studentId)
                 .orElseThrow(() -> new RuntimeException("Student not found with id: " + studentId));
 
+        boolean isStudentCaller = currentUserService.hasRole(UserTypes.STUDENT);
+        if (isStudentCaller && (student.getUser() == null
+                || !student.getUser().getId().equals(currentUserService.requireCurrentUserId()))) {
+            throw new RuntimeException("Students can only update their own profile");
+        }
+
+        if (isStudentCaller && (data.containsKey("courseId") || data.containsKey("classGroupId") || data.containsKey("student_number"))) {
+            throw new RuntimeException("Students cannot modify course, class group, or student number");
+        }
+
         if (data.containsKey("fullName")) {
             student.setFullName(data.get("fullName"));
             User user = student.getUser();
@@ -75,6 +98,9 @@ public class StudentService {
                 user.setName(data.get("fullName"));
                 userRepository.save(user);
             }
+        }
+        if (data.containsKey("student_number")) {
+            student.setStudentNumber(data.get("student_number"));
         }
         if (data.containsKey("password")) {
             User user = student.getUser();

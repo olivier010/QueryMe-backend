@@ -24,8 +24,11 @@ public class TeacherService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private CurrentUserService currentUserService;
+
     @Transactional
-    public Teacher registerTeacher(String email, String password, String fullName) {
+    public Teacher registerTeacher(String email, String password, String fullName, String department) {
         // 1. Create User with BCrypt-encoded password
         User user = User.builder()
                 .email(email)
@@ -38,6 +41,7 @@ public class TeacherService {
         // 2. Create Teacher linked to User
         Teacher teacher = Teacher.builder()
                 .fullName(fullName)
+                .department(department)
                 .user(user)
                 .build();
 
@@ -49,6 +53,12 @@ public class TeacherService {
         Teacher teacher = teacherRepository.findById(teacherId)
                 .orElseThrow(() -> new RuntimeException("Teacher not found with id: " + teacherId));
 
+        if (currentUserService.hasRole(UserTypes.TEACHER)
+                && (teacher.getUser() == null
+                || !teacher.getUser().getId().equals(currentUserService.requireCurrentUserId()))) {
+            throw new RuntimeException("Teachers can only update their own profile");
+        }
+
         if (data.containsKey("fullName")) {
             teacher.setFullName(data.get("fullName"));
             User user = teacher.getUser();
@@ -56,6 +66,9 @@ public class TeacherService {
                 user.setName(data.get("fullName"));
                 userRepository.save(user);
             }
+        }
+        if (data.containsKey("department")) {
+            teacher.setDepartment(data.get("department"));
         }
         if (data.containsKey("password")) {
             User user = teacher.getUser();

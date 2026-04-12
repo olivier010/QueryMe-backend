@@ -4,13 +4,14 @@ import com.year2.queryme.model.Teacher;
 import com.year2.queryme.repository.TeacherRepository;
 import com.year2.queryme.service.TeacherService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/teachers")
+@RequestMapping("/teachers")
 public class TeacherController {
 
     @Autowired
@@ -20,20 +21,24 @@ public class TeacherController {
     private TeacherRepository teacherRepository;
 
     @PostMapping("/register")
+    @PreAuthorize("hasRole('ADMIN')")
     public Teacher register(@RequestBody Map<String, String> data) {
         return teacherService.registerTeacher(
                 data.get("email"),
                 data.get("password"),
-                data.get("fullName")
+                data.get("fullName"),
+                data.get("department")
         );
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('TEACHER', 'ADMIN')")
     public Teacher update(@PathVariable Long id, @RequestBody Map<String, String> data) {
         return teacherService.updateProfile(id, data);
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('TEACHER', 'ADMIN')")
     public List<Teacher> getAll() {
         return teacherRepository.findAll();
     }

@@ -1,6 +1,5 @@
 package com.year2.queryme.model;
 
-import com.year2.queryme.config.StringLongConverter;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -18,6 +17,10 @@ public class Admin {
 
     @Column(nullable = false)
     private String fullName;
+
+    @Builder.Default
+    @Column(name = "is_super_admin")
+    private Boolean superAdmin = false;
 
     @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "user_id", referencedColumnName = "id")
