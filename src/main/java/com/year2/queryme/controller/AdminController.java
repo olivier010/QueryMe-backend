@@ -4,13 +4,14 @@ import com.year2.queryme.model.Admin;
 import com.year2.queryme.repository.AdminRepository;
 import com.year2.queryme.service.AdminService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/admins")
+@RequestMapping("/admins")
 public class AdminController {
 
     @Autowired
@@ -20,6 +21,7 @@ public class AdminController {
     private AdminRepository adminRepository;
 
     @PostMapping("/register")
+    @PreAuthorize("hasRole('ADMIN')")
     public Admin register(@RequestBody Map<String, String> data) {
         return adminService.registerAdmin(
                 data.get("email"),
@@ -29,11 +31,13 @@ public class AdminController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public Admin update(@PathVariable Long id, @RequestBody Map<String, String> data) {
         return adminService.updateProfile(id, data);
     }
 
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public List<Admin> getAll() {
         return adminRepository.findAll();
     }

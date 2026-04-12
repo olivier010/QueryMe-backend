@@ -1,7 +1,7 @@
 package com.year2.queryme.service;
 
-import com.year2.queryme.model.User;
 import com.year2.queryme.model.enums.UserTypes;
+import com.year2.queryme.model.dto.InitializeSuperAdminRequest;
 import com.year2.queryme.model.dto.JwtResponse;
 import com.year2.queryme.model.dto.LoginRequest;
 import com.year2.queryme.model.dto.MessageResponse;
@@ -10,15 +10,14 @@ import com.year2.queryme.repository.UserRepository;
 import com.year2.queryme.security.JwtUtils;
 import com.year2.queryme.security.UserDetailsImpl;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -32,10 +31,13 @@ public class AuthService {
     UserRepository userRepository;
 
     @Autowired
-    PasswordEncoder encoder;
+    JwtUtils jwtUtils;
 
     @Autowired
-    JwtUtils jwtUtils;
+    StudentService studentService;
+
+    @Autowired
+    AdminService adminService;
 
     public ResponseEntity<?> authenticateUser(LoginRequest loginRequest) {
         Authentication authentication = authenticationManager.authenticate(
@@ -64,17 +66,30 @@ public class AuthService {
         }
 
         UserTypes role = (signUpRequest.getRole() != null) ? signUpRequest.getRole() : UserTypes.STUDENT;
+        if (role != UserTypes.STUDENT) {
+            return ResponseEntity
+                    .badRequest()
+                    .body(new MessageResponse("Error: Public signup only supports STUDENT accounts"));
+        }
 
-        User user = User.builder()
-                .email(signUpRequest.getEmail())
-                .name(signUpRequest.getName())
-                .passwordHash(encoder.encode(signUpRequest.getPassword()))
-                .role(role)
-                .createdAt(LocalDateTime.now())
-                .build();
-
-        userRepository.save(user);
+        studentService.registerStudent(
+            signUpRequest.getEmail(),
+            signUpRequest.getPassword(),
+            signUpRequest.getFullName() != null ? signUpRequest.getFullName() : signUpRequest.getName(),
+            null, null,
+            signUpRequest.getStudentNumber()
+        );
 
         return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
+    }
+
+    public ResponseEntity<?> initializeFirstSuperAdmin(InitializeSuperAdminRequest request) {
+        adminService.initializeFirstSuperAdmin(
+                request.getEmail(),
+                request.getPassword(),
+                request.getFullName());
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new MessageResponse("Super admin initialized successfully!"));
     }
 }
