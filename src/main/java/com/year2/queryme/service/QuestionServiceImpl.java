@@ -40,6 +40,7 @@ public class QuestionServiceImpl implements QuestionService {
     private final ExamRepository examRepository;
     private final SandboxService sandboxService;
     private final QueryExecutor queryExecutor;
+    private final QueryValidator queryValidator;
     private final ObjectMapper objectMapper;
     private final CurrentUserService currentUserService;
     private final StudentRepository studentRepository;
@@ -104,15 +105,21 @@ public class QuestionServiceImpl implements QuestionService {
         UUID realTeacherUserId = currentUserService.requireCurrentUserId();
 
         String schemaName = null;
+        boolean keepPreviewSandbox = false;
+        long startedAt = System.nanoTime();
 
         try {
             schemaName = sandboxService.provisionSandbox(examId, realTeacherUserId, exam.getSeedSql());
-            List<Map<String, Object>> rows = queryExecutor.executeSandboxedQuery(schemaName, referenceQuery, 5);
+            queryValidator.validate(referenceQuery, schemaName, true);
+            SandboxExecutionResult executionResult = queryExecutor.executeSandboxedScript(
+                    schemaName, referenceQuery, 5, true);
 
-            List<String> columns = new ArrayList<>();
-            if (!rows.isEmpty()) {
-                columns.addAll(rows.get(0).keySet());
+            if (!executionResult.hasResultSet()) {
+                throw new IllegalArgumentException("Reference query must return a result set");
             }
+
+            List<Map<String, Object>> rows = executionResult.rows();
+            List<String> columns = new ArrayList<>(executionResult.columns());
 
             String expectedColumnsJson = objectMapper.writeValueAsString(columns);
             String expectedRowsJson = objectMapper.writeValueAsString(rows);
@@ -123,13 +130,16 @@ public class QuestionServiceImpl implements QuestionService {
             answerKey.setExpectedRows(expectedRowsJson);
 
             answerKeyRepository.save(answerKey);
+            keepPreviewSandbox = true;
 
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to process answer key JSON", e);
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException("Invalid reference query: " + e.getMessage(), e);
         } catch (Exception e) {
             throw new RuntimeException("Error executing teacher's reference query: " + e.getMessage(), e);
         } finally {
-            if (schemaName != null) {
+            if (!keepPreviewSandbox && schemaName != null) {
                 try {
                     sandboxService.teardownSandbox(examId, realTeacherUserId);
                 } catch (RuntimeException cleanupException) {
@@ -137,6 +147,9 @@ public class QuestionServiceImpl implements QuestionService {
                             questionId, examId, cleanupException.getMessage());
                 }
             }
+
+            long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
+            log.info("Answer key generation for question {} in exam {} completed in {} ms", questionId, examId, durationMs);
         }
     }
 

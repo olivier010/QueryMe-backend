@@ -33,6 +33,8 @@ queryme:
     password: ${SANDBOX_DB_PASSWORD:${spring.datasource.password}}
     driver-class-name: ${SANDBOX_DB_DRIVER:${spring.datasource.driver-class-name}}
   sandbox:
+    answer-key-cache-ttl-minutes: ${SANDBOX_ANSWER_KEY_CACHE_TTL_MINUTES:15}
+    seed-timeout-seconds: ${SANDBOX_SEED_TIMEOUT_SECONDS:60}
     security:
       db-user-isolation:
         enabled: ${SANDBOX_DB_USER_ISOLATION_ENABLED:false}

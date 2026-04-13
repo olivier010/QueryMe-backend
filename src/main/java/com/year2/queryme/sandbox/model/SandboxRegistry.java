@@ -30,6 +30,9 @@ public class SandboxRegistry {
     @Column(name = "db_user", nullable = false, length = 100)
     private String dbUser;
 
+    @Column(name = "seed_fingerprint", length = 64)
+    private String seedFingerprint;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

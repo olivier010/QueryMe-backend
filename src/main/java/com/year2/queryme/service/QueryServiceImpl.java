@@ -7,6 +7,7 @@ import com.year2.queryme.model.Question;
 import com.year2.queryme.model.Submission;
 import com.year2.queryme.model.dto.SubmissionRequest;
 import com.year2.queryme.model.dto.SubmissionResponse;
+import com.year2.queryme.model.enums.UserTypes;
 import com.year2.queryme.model.enums.VisibilityMode;
 import com.year2.queryme.repository.AnswerKeyRepository;
 import com.year2.queryme.repository.ExamRepository;
@@ -21,7 +22,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
@@ -45,7 +45,6 @@ public class QueryServiceImpl implements QueryService {
     private final CurrentUserService currentUserService;
 
     @Override
-    @Transactional
     public SubmissionResponse submitQuery(SubmissionRequest request) {
         log.info("Processing submission for student {} question {}", request.getStudentId(), request.getQuestionId());
         Submission.SubmissionBuilder submissionBuilder = Submission.builder()
@@ -84,23 +83,22 @@ public class QueryServiceImpl implements QueryService {
             submissionBuilder.sessionId(java.util.UUID.fromString(activeSession.getId()));
             persistSubmission = true;
 
-            // 1. Validate blocklist
-            queryValidator.validate(request.getQuery());
-
-            // 2. Get Sandbox connection details
+            // 1. Get Sandbox connection details
             SandboxConnectionInfo sandboxInfo = sandboxService.getSandboxConnectionDetails(
                 request.getExamId(), request.getStudentId());
 
-            // 3. Executed Sandboxed Query
-            List<Map<String, Object>> studentResult = queryExecutor.executeSandboxedQuery(
-                sandboxInfo.schemaName(), request.getQuery(), 10); // 10s hard timeout
+            // 2. Validate sandbox-scoped SQL
+            queryValidator.validate(request.getQuery(), sandboxInfo.schemaName(), false);
+
+            // 3. Execute sandboxed SQL atomically inside the student's schema
+            SandboxExecutionResult executionResult = queryExecutor.executeSandboxedScript(
+                sandboxInfo.schemaName(), request.getQuery(), 10, false); // 10s hard timeout
+            List<Map<String, Object>> studentResult = executionResult.rows();
                 
             // 4. Compare ResultSets
             Boolean orderSensitive = question.getOrderSensitive() != null ? question.getOrderSensitive() : false;
             boolean isCorrect = resultSetComparator.compare(studentResult, answerKey.getExpectedRows(), orderSensitive);
-            List<String> resultColumns = studentResult.isEmpty()
-                    ? List.of()
-                    : List.copyOf(studentResult.get(0).keySet());
+            List<String> resultColumns = executionResult.columns();
             
             int finalScore = 0;
             if (isCorrect) {
@@ -140,17 +138,22 @@ public class QueryServiceImpl implements QueryService {
         // 5. Save the Submission
         Submission submission = submissionRepository.save(submissionBuilder.build());
         resultService.processNewSubmission(submission.getId());
+        boolean immediateResultsVisible = exam.getVisibilityMode() == VisibilityMode.IMMEDIATE;
+        boolean studentCaller = currentUserService.hasRole(UserTypes.STUDENT);
+        String executionError = (!studentCaller || immediateResultsVisible)
+                ? submission.getExecutionError()
+                : null;
 
         return SubmissionResponse.builder()
             .submissionId(submission.getId())
             .sessionId(submission.getSessionId())
-            .isCorrect(exam.getVisibilityMode() == VisibilityMode.IMMEDIATE ? submission.getIsCorrect() : null)
-            .score(exam.getVisibilityMode() == VisibilityMode.IMMEDIATE ? submission.getScore() : null)
-            .executionError(submission.getExecutionError())
-            .resultsVisible(exam.getVisibilityMode() == VisibilityMode.IMMEDIATE)
-            .resultColumns(exam.getVisibilityMode() == VisibilityMode.IMMEDIATE
+            .isCorrect(immediateResultsVisible ? submission.getIsCorrect() : null)
+            .score(immediateResultsVisible ? submission.getScore() : null)
+            .executionError(executionError)
+            .resultsVisible(immediateResultsVisible)
+            .resultColumns(immediateResultsVisible
                     ? parseColumns(submission.getResultColumns()) : null)
-            .resultRows(exam.getVisibilityMode() == VisibilityMode.IMMEDIATE
+            .resultRows(immediateResultsVisible
                     ? parseRows(submission.getResultRows()) : null)
             .build();
     }

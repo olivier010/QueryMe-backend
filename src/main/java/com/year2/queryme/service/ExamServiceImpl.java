@@ -8,6 +8,7 @@ import com.year2.queryme.model.enums.UserTypes;
 import com.year2.queryme.model.mapper.ExamMapper;
 import com.year2.queryme.repository.CourseEnrollmentRepository;
 import com.year2.queryme.repository.ExamRepository;
+import com.year2.queryme.repository.QuestionRepository;
 import com.year2.queryme.repository.StudentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,7 @@ public class ExamServiceImpl implements ExamService {
     private final CurrentUserService currentUserService;
     private final StudentRepository studentRepository;
     private final CourseEnrollmentRepository courseEnrollmentRepository;
+    private final QuestionRepository questionRepository;
 
     @Override
     public ExamResponse createExam(CreateExamRequest request) {
@@ -159,6 +161,9 @@ public class ExamServiceImpl implements ExamService {
 
     private ExamResponse toResponse(Exam exam) {
         ExamResponse response = ExamMapper.toResponse(exam);
+        int questionCount = Math.toIntExact(questionRepository.countByExamId(java.util.UUID.fromString(exam.getId())));
+        response.setQuestionCount(questionCount);
+        response.setQuestionsCount(questionCount);
         if (currentUserService.hasRole(UserTypes.STUDENT)) {
             response.setSeedSql(null);
         }

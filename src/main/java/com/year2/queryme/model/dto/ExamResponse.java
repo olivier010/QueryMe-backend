@@ -15,6 +15,8 @@ public class ExamResponse {
     private VisibilityMode visibilityMode;
     private Integer timeLimitMins;
     private Integer maxAttempts;
+    private Integer questionCount;
+    private Integer questionsCount;
     private String seedSql;
     private LocalDateTime createdAt;
     private LocalDateTime publishedAt;

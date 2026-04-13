@@ -6,7 +6,7 @@ The backend is organized as a modular monolith around the intended project flow:
 
 - teachers create exams and questions
 - each student attempt gets a private PostgreSQL schema
-- student SQL is graded by result-set comparison, not query-string matching
+- student SQL scripts are graded by final result-set comparison, not query-string matching
 - results are exposed according to the exam visibility mode
 
 This README is backend-focused and grouped by the team/module ownership described in the project brief.
@@ -74,7 +74,9 @@ These backend changes now match the intended QueryMe flow more closely:
 - starting a session provisions the sandbox automatically
 - session expiry is auto-submitted on a scheduler and tears the sandbox down
 - query submissions are tied to a session, not just an exam/student pair
+- query submissions can now include sandbox-scoped write and DDL statements without affecting other sandboxes or system schemas
 - query submit responses only include marks/result sets when the exam visibility mode allows it
+- query validation and execution failures now return through `SubmissionResponse.executionError` instead of surfacing as rollback-only transaction errors
 - student result views are built from the latest submission per question for that session
 - manual sandbox provisioning now returns the real configured connection info instead of a hard-coded DB user
 
@@ -243,9 +245,9 @@ When a teacher creates or updates a question, the service:
 
 1. saves the question
 2. provisions a temporary sandbox seeded from the exam dataset
-3. runs the teacher's `referenceQuery`
-4. stores the normalized answer key JSON
-5. tears the sandbox down
+3. runs the teacher's `referenceQuery` script inside that sandbox
+4. stores the normalized answer key JSON from the final returned result set
+5. rolls back reference-script mutations before keeping or cleaning up the preview sandbox
 
 `QuestionRequest` supports:
 
@@ -264,6 +266,7 @@ When a teacher creates or updates a question, the service:
 
 Notes:
 
+- `referenceQuery` can be a sandbox-scoped multi-statement script, but its final statement must return a result set.
 - Students can only fetch questions for exams that are published and assigned to them.
 - Student-facing question payloads hide `referenceQuery`.
 - If answer-key generation fails, question creation or update fails as well.
@@ -325,7 +328,7 @@ Notes:
 - The normal student flow should use `/sessions/start`, not manual sandbox provisioning.
 - Sandbox schema names now follow the exam/student identity pattern instead of relying on a local README-only sequence.
 - Sandbox connection info comes from the configured sandbox data source.
-- Optional hardening mode can provision a dedicated PostgreSQL role per sandbox (`SANDBOX_DB_USER_ISOLATION_ENABLED=true`) with restricted schema access and automatic role cleanup on teardown.
+- Optional hardening mode can provision a dedicated PostgreSQL role per sandbox (`SANDBOX_DB_USER_ISOLATION_ENABLED=true`) with schema-local DML/DDL permissions, restricted sandbox access, and automatic role cleanup on teardown.
 
 ## Group G - Query Engine
 
@@ -347,25 +350,29 @@ What happens during grading:
 
 1. the service validates that the question belongs to the supplied exam
 2. the active exam session is resolved and validated
-3. the SQL is checked against the blocklist
-4. the student's sandbox is resolved
-5. the SQL runs with a hard 10-second timeout
-6. the result set is compared to the stored answer key
+3. the student's sandbox is resolved
+4. the SQL is validated against sandbox-safety rules
+5. the SQL script runs atomically inside the student's sandbox with a hard 10-second timeout
+6. the final returned result set is compared to the stored answer key
 7. a submission row is saved with score, correctness, and captured result-set JSON
 8. the results module is notified so the `results` table stays synchronized
 
 Submission SQL constraints in current implementation:
 
-- only read-style queries (`SELECT` / `WITH`) are accepted
-- multi-statement submissions are rejected
-- SQL comments in submissions are rejected
-- destructive/admin keywords are blocked
+- allowed commands include `SELECT`, `WITH`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `CREATE TABLE/VIEW/INDEX`, `ALTER TABLE`, and `DROP TABLE/VIEW/INDEX`
+- multi-statement submissions are allowed
+- every referenced object must stay inside the current student's sandbox schema
+- `public`, `information_schema`, `pg_*`, and other students' `exam_*` schemas are blocked
+- SQL comments and dollar-quoted blocks are rejected
+- system-level commands such as `GRANT`, `REVOKE`, `COPY`, `VACUUM`, `CALL`, and similar commands are blocked
+- temporary and unlogged objects are blocked
 
 Current scoring behavior:
 
-- exact match: full marks
+- exact match of the final returned result set: full marks
 - `partialMarks = true` and matching row count: half marks
-- blocklist failure, timeout, or execution failure: returned as `executionError`
+- validation failure, timeout, or execution failure: returned as `executionError`
+- if a submitted script does not return rows, the compared result set is empty unless the student ends with `SELECT` or a `... RETURNING` clause
 
 `SubmissionResponse` includes:
 
@@ -383,6 +390,10 @@ Visibility behavior on submit:
 - `IMMEDIATE`: returns score, correctness, and result-set data right away
 - `END_OF_EXAM`: saves the submission, but withholds marks and result rows from the submit response
 - `NEVER`: saves the submission, but withholds marks and result rows from the submit response
+
+Additional submit behavior:
+
+- sandbox validation and execution failures are reported in a normal `SubmissionResponse` instead of bubbling up as rollback-only transaction errors
 
 ## Group C - Results Module
 

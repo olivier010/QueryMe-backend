@@ -10,4 +10,5 @@ import java.util.UUID;
 @Repository
 public interface QuestionRepository extends JpaRepository<Question, UUID> {
     List<Question> findByExamIdOrderByOrderIndexAsc(UUID examId);
+    long countByExamId(UUID examId);
 }
