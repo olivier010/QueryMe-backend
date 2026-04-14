@@ -326,6 +326,7 @@ Base path: `/sandboxes`
 Notes:
 
 - The normal student flow should use `/sessions/start`, not manual sandbox provisioning.
+- Sandbox endpoints take the numeric student profile id and resolve it to the auth user UUID internally.
 - Sandbox schema names now follow the exam/student identity pattern instead of relying on a local README-only sequence.
 - Sandbox connection info comes from the configured sandbox data source.
 - Optional hardening mode can provision a dedicated PostgreSQL role per sandbox (`SANDBOX_DB_USER_ISOLATION_ENABLED=true`) with schema-local DML/DDL permissions, restricted sandbox access, and automatic role cleanup on teardown.

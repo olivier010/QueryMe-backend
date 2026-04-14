@@ -87,8 +87,14 @@ public class StudentService {
             throw new RuntimeException("Students can only update their own profile");
         }
 
-        if (isStudentCaller && (data.containsKey("courseId") || data.containsKey("classGroupId") || data.containsKey("student_number"))) {
-            throw new RuntimeException("Students cannot modify course, class group, or student number");
+        if (isStudentCaller && (data.containsKey("fullName")
+                || data.containsKey("name")
+                || data.containsKey("email")
+                || data.containsKey("courseId")
+                || data.containsKey("classGroupId")
+                || data.containsKey("student_number")
+                || data.containsKey("studentNumber"))) {
+            throw new RuntimeException("Students can only change their password");
         }
 
         if (data.containsKey("fullName")) {
