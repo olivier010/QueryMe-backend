@@ -644,7 +644,7 @@ This section documents the security and user management enhancements implemented
 - **Feature**: Added a temporary utility to reset the super admin status if credentials are lost.
 - **Endpoint**: `POST /auth/bootstrap/reset` (Public).
 
----
+- sandbox validation and execution failures are reported in a normal `SubmissionResponse` instead of bubbling up as rollback-only transaction errors
 
 ### API Endpoint Summary Table (New & Updated)
 
